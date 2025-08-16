@@ -1,0 +1,29 @@
+# Node.js dependencies
+node_modules/
+tokens/
+# Environment variables file
+.env
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# PM2 logs
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Optional: coverage directory if you use test coverage tools
+coverage/
+
+# Optional: IDE/editor folders
+.vscode/
+.idea/
