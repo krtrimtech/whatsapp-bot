@@ -126,8 +126,8 @@ su - whatsappbot
 
 ```bash
 
-git clone https://github.com/krtrimtech/whatsapp-bot.git ~/venom-whatsapp-bot
-cd ~/venom-whatsapp-bot
+git clone https://github.com/krtrimtech/whatsapp-bot.git ~/whatsapp-bot
+cd ~/whatsapp-bot
 npm install
 
 ```
@@ -165,7 +165,7 @@ Adjust values for your environment.
 
 ```bash
 
-pm2 start index.js --name venom-whatsapp-bot
+pm2 start index.js --name whatsapp-bot
 pm2 save
 pm2 startup
 
@@ -200,10 +200,10 @@ browserPathExecutable: '/usr/bin/google-chrome'
 ## 13. PM2 Cheatsheet
 
 - `pm2 list` — List all processes  
-- `pm2 logs venom-whatsapp-bot` — Tail logs  
-- `pm2 restart venom-whatsapp-bot` — Restart  
-- `pm2 stop venom-whatsapp-bot` — Stop  
-- `pm2 delete venom-whatsapp-bot` — Remove from PM2  
+- `pm2 logs whatsapp-bot` — Tail logs  
+- `pm2 restart whatsapp-bot` — Restart  
+- `pm2 stop whatsapp-bot` — Stop  
+- `pm2 delete whatsapp-bot` — Remove from PM2  
 
 ---
 
