@@ -1,0 +1,487 @@
+{
+  "name": "wa-auto",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Extract and validate incoming WhatsApp message data\nconst incomingData = $input.first().json;\n\n// Extract message details\nconst from = incomingData.body.from || '';\nconst message = incomingData.body.body || '';\nconst messageType = incomingData.body.messageType || 'text';\nconst timestamp = incomingData.body.timestamp || new Date().toISOString();\nconst businessName = incomingData.body.businessName || 'Your Business';\n\n// Clean phone number for logging\nconst cleanPhone = from.replace('@c.us', '');\n\n// Log incoming message\nconsole.log(`📥 Processing message from ${cleanPhone}: ${message}`);\n\n// Validate message\nif (!message || message.trim() === '') {\n  return [{\n    json: {\n      error: 'Empty message received',\n      from: from,\n      timestamp: timestamp\n    }\n  }];\n}\n\n// Skip if message is too long (over 1000 characters)\nif (message.length > 1000) {\n  return [{\n    json: {\n      error: 'Message too long',\n      from: from,\n      message: 'Sorry, your message is too long. Please keep it under 1000 characters.',\n      timestamp: timestamp\n    }\n  }];\n}\n\n// Prepare data for next nodes\nreturn [{\n  json: {\n    from: from,\n    message: message.trim(),\n    messageType: messageType,\n    timestamp: timestamp,\n    businessName: businessName,\n    cleanPhone: cleanPhone\n  }\n}];\n"
+      },
+      "id": "91d8709d-67ff-43c8-a332-c15ea184bdba",
+      "name": "Process Message",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1552,
+        704
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Gemini AI response and prepare for WhatsApp\nconst messageData = $(\"Extract Knowledge\").first().json;\nconst aiResponse = $input.first().json;\n\n// Extract the AI response text\nlet responseText = \"\";\n\n// Check if the AI response has an 'output' field\nif (aiResponse && aiResponse.output) {\n  responseText = aiResponse.output.trim();\n} else if (aiResponse && aiResponse.text) {\n  // Fallback for older Gemini node versions or different structures\n  responseText = aiResponse.text.trim();\n} else if (aiResponse && aiResponse.response) {\n  // Another fallback\n  responseText = aiResponse.response.trim();\n} else {\n  responseText = \"Sorry, I\\\"m having trouble processing your request right now. Please try again later.\";\n}\n\n// Ensure response is not too long for WhatsApp\nif (responseText.length > 1500) {\n  responseText = responseText.substring(0, 1450) + \"... (continued in next message)\";\n}\nif (messageData.message.toLowerCase().match(/\\b(hello|hi|hey|good morning|good afternoon|good evening)\\b/)\n){\n  responseText = \"Hello,\\n\" + responseText;\n}\n// Log the response\nconsole.log(`🤖 AI Response for ${messageData.cleanPhone}: ${responseText.substring(0, 100)}...`);\n\n// Prepare response for WhatsApp bot\nreturn [{\n  json: {\n    to: messageData.from,\n    message: responseText,\n    timestamp: new Date().toISOString(),\n    originalMessage: messageData.message,\n    businessName: messageData.businessName\n  }\n}];\n"
+      },
+      "id": "944ab108-91f6-4d3b-842c-2f64bfb5e664",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        2608,
+        608
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://35.209.10.240:3000/webhook/send-message",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer your_super_secret_token"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $json.to }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.message }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "80beac4a-610c-4ece-afc1-5adfb37888e1",
+      "name": "Send to WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        2816,
+        608
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "R6sSBiY2Jbc6qMpe",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"message\": \"Message processed successfully\",\n  \"timestamp\": \"{{ $json.timestamp }}\",\n  \"to\": \"{{ $json.to }}\"\n}",
+        "options": {}
+      },
+      "id": "1ba1d8e4-f155-4af5-9b3f-a0b16c8e96ba",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        3040,
+        608
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 1,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "error-condition",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              },
+              "leftValue": "={{ $json.error }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bdce24cd-0b69-4ed5-8f3d-bb225aba79a1",
+      "name": "Check for Errors",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        1440,
+        1008
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:3000/webhook/send-message",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"to\": \"{{ $json.from }}\",\n  \"message\": \"{{ $json.message || 'Sorry, I couldn\\'t process your message. Please try again later.' }}\"\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "38e35b2c-a54e-4f14-8548-586507add5e0",
+      "name": "Send Error Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1712,
+        976
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "R6sSBiY2Jbc6qMpe",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": false,\n  \"error\": \"{{ $json.error }}\",\n  \"timestamp\": \"{{ $json.timestamp }}\"\n}",
+        "options": {}
+      },
+      "id": "5da22602-a566-4fff-8c65-4a35338da6b2",
+      "name": "Error Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        1920,
+        976
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.message }}",
+        "options": {
+          "systemMessage": "=You are a customer service representative for krtrim (क्रत्रिम), a leading AI and automation technology company in India focused on helping businesses streamline operations and enhance customer engagement.\n\nCompany Overview:\n{{ $('Get Knowledge Base').item.json.content }}\n\nYour Role:\n\nGreet customers warmly at the start of each conversation or whenever the user’s message contains a greeting (e.g., hello, hi, good morning).\n\nProvide clear, accurate, and concise information about krtrim’s AI chatbots, voice assistants, SaaS apps, and automation services based on the knowledge base.\n\nAssist customers with scheduling consultations, product inquiries, technical support, and explain customization and pricing options clearly.\n\nShow genuine interest in understanding the customer’s business goals and challenges before recommending solutions.\n\nAddress feedback and resolve issues promptly and professionally.\n\nPromote current offers such as free static websites, consultation sessions, and upgrade options.\n\nCommunication Style:\n\nAlways begin with a friendly greeting on the first customer message or when greeted by the user, without repeating greetings unnecessarily.\n\nUse simple, jargon-free language to explain concepts and services.\n\nBe professional, warm, patient, and approachable.\n\nEncourage two-way communication to better understand needs and tailor advice.\n\nProvide brief, precise answers focused on user requests, avoiding long or unrelated information unless asked.\n\nOffer to escalate complex questions to technical or sales specialists if needed.\n\nClose conversations politely by asking if further assistance is required.\n\nKey Guidelines:\n\nIntroduce yourself as a krtrim representative politely and clearly when greeting.\n\nListen carefully to user queries and tailor responses directly related to their questions.\n\nClearly explain krtrim’s service benefits, how to use scheduling tools, and integration options.\n\nHighlight special deals and emphasize how krtrim’s solutions can boost efficiency and growth.\n\nAvoid generic replies with unresolved placeholders; always replace them with clear, useful information.\n\nKeep user experience friendly and efficient through each interaction.\n\nExample greeting to user on first or greeting message:\n“Hello! Welcome to krtrim (क्रत्रिम), your trusted partner in AI-powered automation and digital transformation. How may I assist you today?”\n\nOffering help examples:\n\n“You can ask me about our AI chatbots, voice agents, SaaS development, pricing, or consultation scheduling.”\n\n“If you need assistance with automating your business processes or want details about our free website offer, just let me know!”\n\nQuick Reference — Contact & Support:\n\nWebsite: www.krtrim.tech\n\nEmail: shyanu@krtrim.tech\n\nPartner Signup: https://forms.gle/VXWadhhNmMoiJGMe7\n\nWhatsApp Community: https://chat.whatsapp.com/Js4MmZ6k6GOJ0bktViluoT?mode=ac_t\n\nOperating Hours:\nMonday to Saturday, 9:00 AM to 7:00 PM IST\n\nNotes:\n\nUse “Hello” only for the first greeting or when responding directly to user greetings.\n\nAlways provide short, relevant, and helpful answers focused on the customer’s request.\n\nAvoid sending unresolved variables or placeholders in responses.\n\nIf unsure about a question, politely offer to connect them with a human expert."
+        }
+      },
+      "id": "2957f90f-edda-4e2b-bc44-45ddfb6c4fda",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [
+        2224,
+        496
+      ],
+      "typeVersion": 2,
+      "alwaysOutputData": false,
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "cec7f7ce-81ec-4ebd-9a8d-a8710bf94212",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "position": [
+        2256,
+        720
+      ],
+      "typeVersion": 1,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "hwLMRn77dDKsu1Ti",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-incoming",
+        "options": {}
+      },
+      "id": "a29e8c7d-60c5-4e96-9194-8a72f9a328b7",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        1344,
+        704
+      ],
+      "webhookId": "09b247fe-74e6-46ed-bcfe-7dee01aba874",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "=={{ $(\"Process Message\").first().json.from }}",
+        "contextWindowLength": 10
+      },
+      "id": "8d39b7bf-3f9f-416b-8105-71c3d08fd071",
+      "name": "Simple Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "position": [
+        2368,
+        720
+      ],
+      "typeVersion": 1.3
+    },
+    {
+      "parameters": {
+        "content": "## Webhook Trigger Receives incoming Message from Venom Bot server.\n \nThis section receives incoming WhatsApp messages via webhook, extracts key details (sender, message content), and performs initial validation (e.g., message length check). All incoming messages are then prepared for AI processing.",
+        "height": 480,
+        "width": 400
+      },
+      "id": "bfea1da1-3162-4eff-8f78-58c00f2f638e",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1328,
+        368
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## Memory Retriver \nThe workflow retrieves general knowledge from Google Docs and combines it with the user's message. The AI Agent, powered by Google Gemini and equipped with Simple Memory, uses this combined context to generate intelligent, persona-driven responses, maintaining conversational flow.",
+        "height": 620,
+        "width": 440
+      },
+      "id": "2a9afa79-ead6-43a9-8b1d-ace82a73f1c5",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1744,
+        224
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## Response Formatting.\n\nThe AI's generated response is formatted for WhatsApp, ensuring it meets length requirements. It's then sent back to the user via the Venom bot. The Webhook Response node ensures n8n properly acknowledges the initial incoming message.",
+        "height": 1020,
+        "width": 540
+      },
+      "id": "c71b64d6-5245-4e7c-b058-063b826bb86f",
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2208,
+        160
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## Error Call🆘🆘🆘\non Failed Request from Venom bot, Venom sends a default \"Get back Soon\" Message",
+        "height": 300,
+        "width": 820
+      },
+      "id": "1da18005-d17b-4ec5-9ed5-602edfb42158",
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1328,
+        880
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## Send Response to Venom Bot.\n\nThis node sends a final response back to the initiating webhook (your Venom bot) to confirm that the workflow has completed its execution. This is crucial for proper communication and to prevent timeouts on the bot's end.",
+        "height": 420,
+        "width": 480
+      },
+      "id": "c61625f6-2af0-4654-91ec-b0f78e359c00",
+      "name": "Sticky Note4",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2768,
+        400
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get message data from previous node (Process Message)\nconst messageData = $(\"Process Message\").first().json;\n\n// Get knowledge base content from the Google Docs node\nconst docData = $input.first().json;\n\nlet knowledgeBase = \"\";\n\n// Check if the content exists and is a string\nif (docData && typeof docData.content === \"string\") {\n  knowledgeBase = docData.content;\n}\n\n// Clean up the knowledge base text (optional, but good practice)\nknowledgeBase = knowledgeBase\n  .replace(/\\n\\s*\\n/g, \"\\n\") // Remove multiple newlines\n  .replace(/\\s+/g, \" \") // Replace multiple spaces with single space\n  .trim();\n\nconsole.log(`📚 Knowledge base loaded: ${knowledgeBase.length} characters`);\n\n// Prepare data for next nodes, combining message and knowledge base\nreturn [{\n  json: {\n    ...messageData,\n    knowledgeBase: knowledgeBase\n  }\n}];\n"
+      },
+      "id": "054ffe8b-88f6-4dd2-a2d5-59db7c7f45ae",
+      "name": "Extract Knowledge",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1984,
+        416
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "documentURL": "https://docs.google.com/document/d/1XnkrQEFyPqSvwKs1oET0a7RU_tX8vuq-TVVTUuNeakU/edit?usp=sharing"
+      },
+      "id": "1526f46a-dd11-4918-a88c-fead62846135",
+      "name": "Get Knowledge Base",
+      "type": "n8n-nodes-base.googleDocs",
+      "position": [
+        1776,
+        496
+      ],
+      "typeVersion": 2,
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "f3aZedEJ0BzdHneX",
+          "name": "Google Docs account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Process Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Send to WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Message": {
+      "main": [
+        [
+          {
+            "node": "Check for Errors",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Knowledge Base",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check for Errors": {
+      "main": [
+        [
+          {
+            "node": "Send Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Error Response": {
+      "main": [
+        [
+          {
+            "node": "Error Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Knowledge": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Knowledge Base": {
+      "main": [
+        [
+          {
+            "node": "Extract Knowledge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ac2eda85-937f-4c3e-aa8f-dcc7b95d0a90",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8831a852b15e06b52cbdb9ec14cdf159452b759014ddecf71fa53bf448f6c2e8"
+  },
+  "id": "tsdrdBuUJC1m9kyq",
+  "tags": []
+}

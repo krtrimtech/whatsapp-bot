@@ -67,7 +67,7 @@ function startBot(client) {
       }
 
       // Echo back message (customize as needed)
-      client.sendText(message.from, 'Received: ' + message.body);
+      // client.sendText(message.from, 'Received: ' + message.body);
     }
   });
 }
